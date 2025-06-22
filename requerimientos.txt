@@ -1,0 +1,7 @@
+tkinter (incluida en la mayoría de instalaciones de Python, pero en algunas distribuciones puede requerir instalar python3-tk)
+ttk (viene con tkinter)
+tkcalendar
+matplotlib
+reportlab
+
+y phyton 3.12.9 o superior
