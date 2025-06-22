@@ -1,6 +1,6 @@
 from datetime import datetime
 import tkinter as tk
-from config.database import get_carreras
+from config.database import get_carreras, get_db_connection
 from tkinter import ttk, messagebox, filedialog
 from controllers.professor_controller import ProfessorController
 from controllers.user_controller import UserController
@@ -183,16 +183,13 @@ class ProfessorListView:
 
     def get_coordinator_carrera(self, user_id):
         # Busca la carrera del coordinador en la tabla coordinadores
-        from config.database import get_connection
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT carrera FROM coordinadores WHERE id_usuario = ?", (user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else None
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT carrera FROM coordinadores WHERE id_usuario = ?", (user_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def search_professors(self):
         query = self.search_entry.get().lower()

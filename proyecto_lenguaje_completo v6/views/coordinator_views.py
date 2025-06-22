@@ -1,10 +1,16 @@
 from datetime import datetime
 import tkinter as tk
-from config.database import get_carreras,get_db_connection, set_periodo_activo,get_periodo_activo
+from config.database import (
+    get_carreras,
+    get_db_connection,
+    set_periodo_activo,
+    get_periodo_activo,
+)
 from tkinter import ttk, messagebox
 from controllers.coordinator_controller import CoordinatorController
 from controllers.user_controller import UserController
 from tkcalendar import DateEntry
+
 
 class CoordinatorListView:
 
@@ -456,87 +462,107 @@ class CoordinatorListView:
             command=submit,
         )
         btn.grid(row=len(labels), column=0, columnspan=2, pady=20)
- 
-        
-    
+
     def cerrar_periodo_academico(self):
-            """
+        """
         Copia la información de inscripciones y notas finales a materias_cursadas,
         luego elimina todas las secciones, inscripciones y calificaciones.
         """
-            periodo_actual = get_periodo_activo()
-            if not periodo_actual:
-                messagebox.showerror("Error", "No se pudo determinar el período activo.")
-                return
-    
-            confirm = messagebox.askyesno(
-                "Confirmar",
-                f"¿Está seguro de cerrar el período académico {periodo_actual}? Esto archivará las notas y eliminará todas las secciones activas de este período.",
-            )
-            if not confirm:
-                return
-    
-            try:
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    # Solo las secciones activas del periodo actual
-                    cursor.execute("SELECT id_seccion, id_materia, periodo FROM secciones WHERE estado = 'activa' AND periodo = ?", (periodo_actual,))
-                    secciones = cursor.fetchall()
-    
-                    for id_seccion, id_materia, periodo in secciones:
-                        # Inscripciones de la sección
-                        cursor.execute("SELECT id_estudiante, id_inscripcion FROM inscripciones WHERE id_seccion = ?", (id_seccion,))
-                        inscripciones = cursor.fetchall()
-                        for id_estudiante, id_inscripcion in inscripciones:
-                            # Nota final
-                            cursor.execute(
-                                "SELECT valor_nota FROM calificaciones WHERE id_inscripcion = ? AND tipo_evaluacion = 'nota_def' ORDER BY id_calificacion DESC LIMIT 1",
-                                (id_inscripcion,),
-                            )
-                            nota_row = cursor.fetchone()
-                            nota_final = nota_row[0] if nota_row else None
-    
-                            # Estado académico
-                            if nota_final is None:
-                                estado = "REPROBÓ"
-                            elif nota_final >= 10:
-                                estado = "APROBÓ"
-                            else:
-                                estado = "REPROBÓ"
-    
-                            # Insertar en materias_cursadas
-                            cursor.execute(
-                                """
+        periodo_actual = get_periodo_activo()
+        if not periodo_actual:
+            messagebox.showerror("Error", "No se pudo determinar el período activo.")
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar",
+            f"¿Está seguro de cerrar el período académico {periodo_actual}? Esto archivará las notas y eliminará todas las secciones activas de este período.",
+        )
+        if not confirm:
+            return
+
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                # Solo las secciones activas del periodo actual
+                cursor.execute(
+                    "SELECT id_seccion, id_materia, periodo FROM secciones WHERE estado = 'activa' AND periodo = ?",
+                    (periodo_actual,),
+                )
+                secciones = cursor.fetchall()
+
+                for id_seccion, id_materia, periodo in secciones:
+                    # Inscripciones de la sección
+                    cursor.execute(
+                        "SELECT id_estudiante, id_inscripcion FROM inscripciones WHERE id_seccion = ?",
+                        (id_seccion,),
+                    )
+                    inscripciones = cursor.fetchall()
+                    for id_estudiante, id_inscripcion in inscripciones:
+                        # Nota final
+                        cursor.execute(
+                            "SELECT valor_nota FROM calificaciones WHERE id_inscripcion = ? AND tipo_evaluacion = 'nota_def' ORDER BY id_calificacion DESC LIMIT 1",
+                            (id_inscripcion,),
+                        )
+                        nota_row = cursor.fetchone()
+                        nota_final = nota_row[0] if nota_row else None
+
+                        # Estado académico
+                        if nota_final is None:
+                            estado = "REPROBÓ"
+                        elif nota_final >= 10:
+                            estado = "APROBÓ"
+                        else:
+                            estado = "REPROBÓ"
+
+                        # Insertar en materias_cursadas
+                        cursor.execute(
+                            """
                                 INSERT INTO materias_cursadas (id_estudiante, id_materia, periodo, nota_final, estado, fecha_cursada)
                                 VALUES (?, ?, ?, ?, ?, DATE('now'))
                                 """,
-                                (id_estudiante, id_materia, periodo, nota_final, estado),
-                            )
-    
-                    # Eliminar solo datos del periodo actual
-                    cursor.execute("DELETE FROM calificaciones WHERE id_inscripcion IN (SELECT id_inscripcion FROM inscripciones WHERE id_seccion IN (SELECT id_seccion FROM secciones WHERE periodo = ?))", (periodo_actual,))
-                    cursor.execute("DELETE FROM inscripciones WHERE id_seccion IN (SELECT id_seccion FROM secciones WHERE periodo = ?)", (periodo_actual,))
-                    cursor.execute("DELETE FROM secciones WHERE periodo = ?", (periodo_actual,))
+                            (id_estudiante, id_materia, periodo, nota_final, estado),
+                        )
+
+                # Eliminar solo datos del periodo actual
+                cursor.execute(
+                    "DELETE FROM calificaciones WHERE id_inscripcion IN (SELECT id_inscripcion FROM inscripciones WHERE id_seccion IN (SELECT id_seccion FROM secciones WHERE periodo = ?))",
+                    (periodo_actual,),
+                )
+                cursor.execute(
+                    "DELETE FROM inscripciones WHERE id_seccion IN (SELECT id_seccion FROM secciones WHERE periodo = ?)",
+                    (periodo_actual,),
+                )
+                cursor.execute(
+                    "DELETE FROM secciones WHERE periodo = ?", (periodo_actual,)
+                )
+                conn.commit()
+
+            # Avanzar al siguiente periodo
+            anio, lapso = periodo_actual.split("-")
+            if lapso == "1":
+                siguiente = f"{anio}-2"
+            else:
+                siguiente = f"{int(anio)+1}-1"
+
+            # Si el siguiente periodo no existe, crearlo
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT 1 FROM periodos_academicos WHERE periodo = ?", (siguiente,)
+                )
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO periodos_academicos (periodo, es_activo) VALUES (?, 0)",
+                        (siguiente,),
+                    )
                     conn.commit()
-    
-                # Avanzar al siguiente periodo
-                anio, lapso = periodo_actual.split("-")
-                if lapso == "1":
-                    siguiente = f"{anio}-2"
-                else:
-                    siguiente = f"{int(anio)+1}-1"
-    
-                # Si el siguiente periodo no existe, crearlo
-                with get_db_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT 1 FROM periodos_academicos WHERE periodo = ?", (siguiente,))
-                    if not cursor.fetchone():
-                        cursor.execute("INSERT INTO periodos_academicos (periodo, es_activo) VALUES (?, 0)", (siguiente,))
-                        conn.commit()
-    
-                set_periodo_activo(siguiente)
-    
-                messagebox.showinfo("Éxito", f"Período {periodo_actual} cerrado. Ahora el período activo es {siguiente}.")
-                self.load_coordinators()
-            except Exception as e:
-                messagebox.showerror("Error", f"Ocurrió un error: {e}")
+
+            set_periodo_activo(siguiente)
+
+            messagebox.showinfo(
+                "Éxito",
+                f"Período {periodo_actual} cerrado. Ahora el período activo es {siguiente}.",
+            )
+            self.load_coordinators()
+        except Exception as e:
+            messagebox.showerror("Error", f"Ocurrió un error: {e}")

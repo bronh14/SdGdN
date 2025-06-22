@@ -2,7 +2,7 @@ import threading
 import tkinter as tk
 import time
 from tkinter import ttk, messagebox
-from config.database import get_connection
+from config.database import get_connection, get_db_connection
 from views.base_view import BaseView
 from controllers.auth_controller import AuthController
 from config.styles import configure_styles
@@ -270,13 +270,12 @@ class RegisterView(BaseView):
             row=6, column=0, sticky="w", pady=5
         )
         # Obtener carreras únicas desde la base de datos
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT DISTINCT carrera FROM materias WHERE carrera IS NOT NULL"
-        )
-        carreras = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT DISTINCT carrera FROM materias WHERE carrera IS NOT NULL"
+            )
+            carreras = [row[0] for row in cursor.fetchall()]
         self.carrera_combo = ttk.Combobox(
             self.form_frame,
             font=("Arial", 12),

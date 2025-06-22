@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from tkinter import simpledialog
 from controllers.course_controller import CourseController
+from config.database import get_db_connection
 
 
 class CourseListView:
@@ -194,40 +195,31 @@ class CourseListView:
         refresh_btn.pack(side="left", padx=5)
 
     def get_coordinator_carrera(self, user_id):
-        from config.database import get_connection
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT carrera FROM coordinadores WHERE id_usuario = ?", (user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else None
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT carrera FROM coordinadores WHERE id_usuario = ?", (user_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def get_professor_carrera(self, user_id):
-        from config.database import get_connection
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT carrera FROM profesores WHERE id_usuario = ?", (user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else None
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT carrera FROM profesores WHERE id_usuario = ?", (user_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def get_student_carrera(self, user_id):
-        from config.database import get_connection
-
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT carrera FROM estudiantes WHERE id_usuario = ?", (user_id,)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else None
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT carrera FROM estudiantes WHERE id_usuario = ?", (user_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
 
     def get_user_carrera(self):
         if getattr(self.user, "id", None) == 1:

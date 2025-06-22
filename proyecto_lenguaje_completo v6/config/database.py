@@ -144,45 +144,75 @@ def get_todos_los_profesores(carrera):
 
 def get_record_academico_by_student_id(estudiante_id):
     """
-    Devuelve el récord académico del estudiante: lista de tuplas (codigo, nombre, creditos, periodo, nota_def, estado_academico)
+    Devuelve una lista de tuplas con:
+    (codigo, materia, creditos, periodo, nota_def, estado)
+    Prioriza materias archivadas (materias_cursadas). Si no hay, muestra inscripciones activas.
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
+        # Primero, buscar en materias_cursadas
         cursor.execute(
             """
             SELECT 
                 m.codigo,
                 m.nombre,
                 m.creditos,
-                s.periodo,
+                mc.periodo,
+                mc.nota_final,
+                mc.estado
+            FROM materias_cursadas mc
+            JOIN materias m ON mc.id_materia = m.id_materia
+            WHERE mc.id_estudiante = ?
+            ORDER BY mc.periodo, m.semestre, m.nombre
+            """,
+            (estudiante_id,),
+        )
+        records = cursor.fetchall()
+        if records:
+            return records
+        # Si no hay materias archivadas, mostrar inscripciones activas
+        cursor.execute(
+            """
+            SELECT 
+                m.codigo,
+                m.nombre,
+                m.creditos,
+                COALESCE(s.periodo, '') as periodo,
                 (
-                    SELECT valor_nota 
-                    FROM calificaciones c 
-                    WHERE c.id_inscripcion = i.id_inscripcion AND c.tipo_evaluacion = 'nota_def'
-                    ORDER BY c.id_calificacion DESC LIMIT 1
+                    SELECT c.valor_nota
+                    FROM calificaciones c
+                    WHERE c.id_inscripcion = i.id_inscripcion
+                    AND c.tipo_evaluacion = 'nota_def'
+                    LIMIT 1
                 ) as nota_def,
-                (
-                    CASE
-                        WHEN (
-                            SELECT valor_nota 
-                            FROM calificaciones c 
-                            WHERE c.id_inscripcion = i.id_inscripcion AND c.tipo_evaluacion = 'nota_def'
-                            ORDER BY c.id_calificacion DESC LIMIT 1
-                        ) IS NULL THEN '-'
-                        WHEN (
-                            SELECT valor_nota 
-                            FROM calificaciones c 
-                            WHERE c.id_inscripcion = i.id_inscripcion AND c.tipo_evaluacion = 'nota_def'
-                            ORDER BY c.id_calificacion DESC LIMIT 1
-                        ) >= 10 THEN 'APROBÓ'
-                        ELSE 'REPROBÓ'
-                    END
-                ) as estado_academico
+                CASE
+                    WHEN (
+                        SELECT c.valor_nota
+                        FROM calificaciones c
+                        WHERE c.id_inscripcion = i.id_inscripcion
+                        AND c.tipo_evaluacion = 'nota_def'
+                        LIMIT 1
+                    ) >= 10 THEN 'APROBÓ'
+                    WHEN (
+                        SELECT c.valor_nota
+                        FROM calificaciones c
+                        WHERE c.id_inscripcion = i.id_inscripcion
+                        AND c.tipo_evaluacion = 'nota_def'
+                        LIMIT 1
+                    ) < 10 AND (
+                        SELECT c.valor_nota
+                        FROM calificaciones c
+                        WHERE c.id_inscripcion = i.id_inscripcion
+                        AND c.tipo_evaluacion = 'nota_def'
+                        LIMIT 1
+                    ) IS NOT NULL THEN 'REPROBÓ'
+                    ELSE 'EN CURSO'
+                END as estado
             FROM inscripciones i
             JOIN secciones s ON i.id_seccion = s.id_seccion
             JOIN materias m ON s.id_materia = m.id_materia
             WHERE i.id_estudiante = ?
-            ORDER BY s.periodo DESC, m.codigo
+            ORDER BY s.periodo, m.semestre, m.nombre
             """,
             (estudiante_id,),
         )
@@ -243,19 +273,19 @@ def get_profesores_por_materias_por_carrera(carrera):
         cursor.execute(
             """
             SELECT 
-                m.nombre as materia,
                 u.cedula,
                 u.nombre,
                 u.apellido,
                 p.carrera,
                 p.fecha_contratacion,
+                m.nombre as materia,
                 s.numero_seccion
-            FROM materias m
-            LEFT JOIN secciones s ON m.id_materia = s.id_materia
-            LEFT JOIN profesores p ON s.id_profesor = p.id_profesor
+            FROM profesores p
             LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
-            WHERE m.carrera = ?
-            ORDER BY m.nombre, u.apellido, u.nombre
+            LEFT JOIN secciones s ON p.id_profesor = s.id_profesor
+            LEFT JOIN materias m ON s.id_materia = m.id_materia
+            WHERE p.carrera = ?
+            ORDER BY u.apellido, u.nombre, m.nombre
             """,
             (carrera,),
         )
@@ -263,31 +293,29 @@ def get_profesores_por_materias_por_carrera(carrera):
         profesores_por_materia = {}
         for row in cursor.fetchall():
             (
-                materia,
                 cedula,
                 nombre,
                 apellido,
                 carrera_prof,
                 fecha_contratacion,
+                materia,
                 numero_seccion,
             ) = row
 
-            if materia not in profesores_por_materia:
-                profesores_por_materia[materia] = []
+            materia_key = materia if materia else "SIN MATERIA"
+            if materia_key not in profesores_por_materia:
+                profesores_por_materia[materia_key] = []
 
-            # Solo agregar si hay profesor asignado
-            if cedula and nombre and apellido:
-                profesores_por_materia[materia].append(
-                    {
-                        "cedula": cedula,
-                        "nombre": nombre,
-                        "apellido": apellido,
-                        "carrera": carrera_prof,
-                        "fecha_contratacion": fecha_contratacion,
-                        "numero_seccion": numero_seccion,
-                    }
-                )
-
+            profesores_por_materia[materia_key].append(
+                {
+                    "cedula": cedula,
+                    "nombre": nombre,
+                    "apellido": apellido,
+                    "carrera": carrera_prof,
+                    "fecha_contratacion": fecha_contratacion,
+                    "numero_seccion": numero_seccion,
+                }
+            )
         return profesores_por_materia
 
 

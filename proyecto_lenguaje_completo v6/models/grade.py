@@ -1,4 +1,4 @@
-from config.database import get_connection
+from config.database import get_db_connection, execute_with_retry
 from datetime import datetime
 
 
@@ -28,103 +28,105 @@ class Grade:
         comentarios=None,
     ):
         """Crea una nueva calificación en la base de datos."""
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        if not fecha_evaluacion:
-            fecha_evaluacion = datetime.now().strftime("%Y-%m-%d")
+        def _create():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
 
-        cursor.execute(
-            """
-        INSERT INTO calificaciones (id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-            (
-                inscripcion_id,
-                tipo_evaluacion,
-                valor_nota,
-                fecha_evaluacion,
-                comentarios,
-            ),
-        )
+                if not fecha_evaluacion:
+                    fecha_evaluacion = datetime.now().strftime("%Y-%m-%d")
 
-        grade_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
+                cursor.execute(
+                    """
+                INSERT INTO calificaciones (id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                    (
+                        inscripcion_id,
+                        tipo_evaluacion,
+                        valor_nota,
+                        fecha_evaluacion,
+                        comentarios,
+                    ),
+                )
 
-        return Grade(
-            id=grade_id,
-            inscripcion_id=inscripcion_id,
-            tipo_evaluacion=tipo_evaluacion,
-            valor_nota=valor_nota,
-            fecha_evaluacion=fecha_evaluacion,
-            comentarios=comentarios,
-        )
+                grade_id = cursor.lastrowid
+                conn.commit()
+                return Grade(
+                    id=grade_id,
+                    inscripcion_id=inscripcion_id,
+                    tipo_evaluacion=tipo_evaluacion,
+                    valor_nota=valor_nota,
+                    fecha_evaluacion=fecha_evaluacion,
+                    comentarios=comentarios,
+                )
+
+        return execute_with_retry(_create)
 
     @staticmethod
     def get_by_id(grade_id):
         """Obtiene una calificación por su ID."""
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        cursor.execute(
-            """
-        SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios
-        FROM calificaciones
-        WHERE id_calificacion = ?
-        """,
-            (grade_id,),
-        )
+        def _get():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios
+                FROM calificaciones
+                WHERE id_calificacion = ?
+                """,
+                    (grade_id,),
+                )
+                grade_data = cursor.fetchone()
+                if grade_data:
+                    return Grade(
+                        id=grade_data[0],
+                        inscripcion_id=grade_data[1],
+                        tipo_evaluacion=grade_data[2],
+                        valor_nota=grade_data[3],
+                        fecha_evaluacion=grade_data[4],
+                        comentarios=grade_data[5],
+                    )
+                return None
 
-        grade_data = cursor.fetchone()
-        conn.close()
-
-        if grade_data:
-            return Grade(
-                id=grade_data[0],
-                inscripcion_id=grade_data[1],
-                tipo_evaluacion=grade_data[2],
-                valor_nota=grade_data[3],
-                fecha_evaluacion=grade_data[4],
-                comentarios=grade_data[5],
-            )
-        return None
+        return execute_with_retry(_get)
 
     @staticmethod
     def get_by_enrollment(enrollment_id):
         """Obtiene todas las calificaciones de una inscripción."""
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        cursor.execute(
-            """
-        SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios
-        FROM calificaciones
-        WHERE id_inscripcion = ?
-        """,
-            (enrollment_id,),
-        )
-
-        grades = []
-        for grade_data in cursor.fetchall():
-            grades.append(
-                Grade(
-                    id=grade_data[0],
-                    inscripcion_id=grade_data[1],
-                    tipo_evaluacion=grade_data[2],
-                    valor_nota=grade_data[3],
-                    fecha_evaluacion=grade_data[4],
-                    comentarios=grade_data[5],
+        def _get():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion, comentarios
+                FROM calificaciones
+                WHERE id_inscripcion = ?
+                """,
+                    (enrollment_id,),
                 )
-            )
+                grades = []
+                for grade_data in cursor.fetchall():
+                    grades.append(
+                        Grade(
+                            id=grade_data[0],
+                            inscripcion_id=grade_data[1],
+                            tipo_evaluacion=grade_data[2],
+                            valor_nota=grade_data[3],
+                            fecha_evaluacion=grade_data[4],
+                            comentarios=grade_data[5],
+                        )
+                    )
+                return grades
 
-        conn.close()
-        return grades
+        return execute_with_retry(_get)
 
     @staticmethod
     def get_student_grades(student_id):
         """Obtiene todas las calificaciones de un estudiante."""
-        conn = get_connection()
+        conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -146,103 +148,112 @@ class Grade:
 
     def update(self, valor_nota=None, comentarios=None):
         """Actualiza los datos de la calificación."""
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        if valor_nota:
-            self.valor_nota = valor_nota
+        def _update():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
 
-        if comentarios:
-            self.comentarios = comentarios
+                if valor_nota:
+                    self.valor_nota = valor_nota
 
-        cursor.execute(
-            """
-        UPDATE calificaciones
-        SET valor_nota = ?, comentarios = ?
-        WHERE id_calificacion = ?
-        """,
-            (self.valor_nota, self.comentarios, self.id),
-        )
+                if comentarios:
+                    self.comentarios = comentarios
 
-        conn.commit()
-        conn.close()
+                cursor.execute(
+                    """
+                UPDATE calificaciones
+                SET valor_nota = ?, comentarios = ?
+                WHERE id_calificacion = ?
+                """,
+                    (self.valor_nota, self.comentarios, self.id),
+                )
 
-        return self
+                conn.commit()
+                return self
+
+        return execute_with_retry(_update)
 
     @staticmethod
     def save_or_update(inscripcion_id, tipo_evaluacion, valor_nota):
         """Crea o actualiza la nota de un corte para una inscripción."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        # Verificar si ya existe la nota
-        cursor.execute(
-            """
-        SELECT id_calificacion FROM calificaciones
-        WHERE id_inscripcion = ? AND tipo_evaluacion = ?
-        """,
-            (inscripcion_id, tipo_evaluacion),
-        )
-        row = cursor.fetchone()
-        if row:
-            # Actualizar
-            cursor.execute(
-                """
-            UPDATE calificaciones
-            SET valor_nota = ?
-            WHERE id_calificacion = ?
-            """,
-                (valor_nota, row[0]),
-            )
-        else:
-            # Insertar
-            cursor.execute(
-                """
-            INSERT INTO calificaciones (id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion)
-            VALUES (?, ?, ?, date('now'))
-            """,
-                (inscripcion_id, tipo_evaluacion, valor_nota),
-            )
-        conn.commit()
-        conn.close()
+
+        def _save_or_update():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                # Verificar si ya existe la nota
+                cursor.execute(
+                    """
+                SELECT id_calificacion FROM calificaciones
+                WHERE id_inscripcion = ? AND tipo_evaluacion = ?
+                """,
+                    (inscripcion_id, tipo_evaluacion),
+                )
+                row = cursor.fetchone()
+                if row:
+                    # Actualizar
+                    cursor.execute(
+                        """
+                    UPDATE calificaciones
+                    SET valor_nota = ?
+                    WHERE id_calificacion = ?
+                    """,
+                        (valor_nota, row[0]),
+                    )
+                else:
+                    # Insertar
+                    cursor.execute(
+                        """
+                    INSERT INTO calificaciones (id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion)
+                    VALUES (?, ?, ?, date('now'))
+                    """,
+                        (inscripcion_id, tipo_evaluacion, valor_nota),
+                    )
+                conn.commit()
+
+        return execute_with_retry(_save_or_update)
 
     @staticmethod
     def get_by_inscripcion(inscripcion_id):
         """Devuelve una lista de objetos Grade para una inscripción."""
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-        SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion
-        FROM calificaciones
-        WHERE id_inscripcion = ?
-        """,
-            (inscripcion_id,),
-        )
-        result = []
-        for row in cursor.fetchall():
-            grade = Grade(
-                id=row[0],
-                inscripcion_id=row[1],
-                tipo_evaluacion=row[2],
-                valor_nota=row[3],
-                fecha_evaluacion=row[4],
-            )
-            result.append(grade)
-        conn.close()
-        return result
+
+        def _get():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                SELECT id_calificacion, id_inscripcion, tipo_evaluacion, valor_nota, fecha_evaluacion
+                FROM calificaciones
+                WHERE id_inscripcion = ?
+                """,
+                    (inscripcion_id,),
+                )
+                result = []
+                for row in cursor.fetchall():
+                    grade = Grade(
+                        id=row[0],
+                        inscripcion_id=row[1],
+                        tipo_evaluacion=row[2],
+                        valor_nota=row[3],
+                        fecha_evaluacion=row[4],
+                    )
+                    result.append(grade)
+                return result
+
+        return execute_with_retry(_get)
 
     def delete(self):
         """Elimina la calificación de la base de datos."""
-        conn = get_connection()
-        cursor = conn.cursor()
 
-        cursor.execute(
-            """
-        DELETE FROM calificaciones
-        WHERE id_calificacion = ?
-        """,
-            (self.id,),
-        )
+        def _delete():
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                DELETE FROM calificaciones
+                WHERE id_calificacion = ?
+                """,
+                    (self.id,),
+                )
+                conn.commit()
 
-        conn.commit()
-        conn.close()
+        return execute_with_retry(_delete)

@@ -1267,6 +1267,36 @@ def generate_record_academico_report(
         ]
         data = [[Paragraph(h, style_table_header) for h in headers]]
 
+        # --- NUEVA LÓGICA PARA DETECTAR REPITENCIAS ---
+        # Creamos un diccionario para agrupar las materias por código
+        materias_por_codigo = {}
+        for rec in academic_records:
+            codigo = rec[0]
+            if codigo not in materias_por_codigo:
+                materias_por_codigo[codigo] = []
+            materias_por_codigo[codigo].append(rec)
+
+        # Creamos una nueva lista para los registros con el estado corregido
+        academic_records_corregido = []
+        for codigo, repeticiones in materias_por_codigo.items():
+            if len(repeticiones) > 1:
+                # Ordenar por periodo (por si acaso)
+                repeticiones_ordenadas = sorted(repeticiones, key=lambda x: x[3])
+                for i, rec in enumerate(repeticiones_ordenadas):
+                    # Si es la última vez y el estado es 'APROBÓ', pero antes hubo un 'REPROBÓ', poner 'REPITIÓ'
+                    if i == len(repeticiones_ordenadas) - 1 and rec[5] == "APROBÓ":
+                        hubo_reprobado = any(
+                            r[5] == "REPROBÓ" for r in repeticiones_ordenadas[:-1]
+                        )
+                        if hubo_reprobado:
+                            # Cambiamos el estado a 'REPITIÓ'
+                            rec = list(rec)
+                            rec[5] = "REPITIÓ"
+                            rec = tuple(rec)
+                    academic_records_corregido.append(rec)
+            else:
+                academic_records_corregido.append(repeticiones[0])
+
         # Datos de las materias
         total_creditos = 0
         materias_aprobadas = 0
@@ -1275,12 +1305,12 @@ def generate_record_academico_report(
         suma_notas = 0
         materias_con_nota = 0
 
-        for idx, record in enumerate(academic_records, 1):
+        for idx, record in enumerate(academic_records_corregido, 1):
             codigo, materia, creditos, periodo, nota_def, estado = record
 
             # Calcular estadísticas
             total_creditos += int(creditos)
-            if estado == "APROBÓ":
+            if estado == "APROBÓ" or estado == "REPITIÓ":
                 materias_aprobadas += 1
             elif estado == "REPROBÓ":
                 materias_reprobadas += 1
@@ -1394,29 +1424,42 @@ def generate_record_academico_report(
         elements.append(summary_table)
         elements.append(Spacer(1, 30))
 
-        # --- Leyenda de Estados ---
-        legend_data = [
+        # Estilo para la leyenda
+        leyenda_style = ParagraphStyle(
+            name="Leyenda",
+            fontName="Helvetica",
+            fontSize=8,
+            alignment=1,  # Centrado
+            leading=10,
+        )
+
+        leyenda_data = [
             [
-                Paragraph("<b>LEYENDA:</b>", style_label),
-                Paragraph("APROBÓ: Nota ≥ 10 puntos", style_value),
-                Paragraph("REPROBÓ: Nota < 10 puntos", style_value),
-            ],
+                Paragraph("<b>LEYENDA:</b>", leyenda_style),
+                Paragraph("APROBÓ:<br/>Nota ≥ 10 puntos", leyenda_style),
+                Paragraph("REPROBÓ:<br/>Nota &lt; 10 puntos", leyenda_style),
+                Paragraph(
+                    "REPARACIÓN:<br/>Materia aprobada en reparación", leyenda_style
+                ),
+                Paragraph("REPITIÓ:<br/>Materia repetida y aprobada", leyenda_style),
+            ]
         ]
 
-        legend_table = Table(
-            legend_data,
-            colWidths=[1.0 * inch, 2.0 * inch, 2.0 * inch],
-            hAlign="CENTER",
+        leyenda_table = Table(
+            leyenda_data,
+            colWidths=[55, 80, 80, 110, 110],  # Ajusta los anchos según tu espacio
             style=[
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("GRID", (0, 0), (-1, -1), 1, colors.HexColor("#dbeafe")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f5faff")),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#1e293b")),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (0, 0), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (0, 0), colors.HexColor("#1e293b")),
             ],
         )
-        elements.append(legend_table)
+
+        elements.append(Spacer(1, 10))
+        elements.append(leyenda_table)
 
     else:
         # Si no hay registros académicos
@@ -1781,12 +1824,6 @@ def generate_students_by_semester_report(
             canvas.drawCentredString(300, 730, "REPÚBLICA BOLIVARIANA DE VENEZUELA")
             canvas.drawCentredString(
                 300, 715, "MINISTERIO DEL PODER POPULAR PARA LA DEFENSA"
-            )
-            canvas.drawCentredString(
-                300, 700, "UNIVERSIDAD NACIONAL EXPERIMENTAL POLITÉCNICA"
-            )
-            canvas.drawCentredString(
-                300, 685, "DE LA FUERZA ARMADA NACIONAL BOLIVARIANA"
             )
             canvas.drawCentredString(
                 300, 700, "UNIVERSIDAD NACIONAL EXPERIMENTAL POLITÉCNICA"

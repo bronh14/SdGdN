@@ -40,7 +40,7 @@ class EnrollmentController:
             # Verificar si la materia ya fue aprobada
             cursor.execute(
                 "SELECT 1 FROM materias_cursadas WHERE id_estudiante = ? AND id_materia = ? AND estado = 'APROBÓ'",
-                (estudiante_id, id_materia)
+                (estudiante_id, id_materia),
             )
             if cursor.fetchone():
                 conn.close()

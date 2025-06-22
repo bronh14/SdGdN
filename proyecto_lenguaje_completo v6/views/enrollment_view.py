@@ -98,7 +98,7 @@ class EnrollmentView:
         )
         self.periodo_var = tk.StringVar()
         self.periodo_cb = ttk.Combobox(
-            selectores_frame, textvariable=self.periodo_var, state="readonly", width=10
+            selectores_frame, textvariable=self.periodo_var, state="disabled", width=10
         )
         self.periodo_cb.pack(side="left", padx=5)
 
@@ -569,7 +569,9 @@ class EnrollmentView:
 
         # --- Cambios aquí: obtener códigos de materias aprobadas ---
         materias_cursadas = self.controller.get_materias_cursadas(self.estudiante.id)
-        materias_aprobadas_ids = {m["id_materia"] for m in materias_cursadas if m["estado"] == "APROBÓ"}
+        materias_aprobadas_ids = {
+            m["id_materia"] for m in materias_cursadas if m["estado"] == "APROBÓ"
+        }
         # Obtener los códigos de las materias aprobadas
         materias_aprobadas_codigos = set()
         for m in Course.get_all():
@@ -612,10 +614,7 @@ class EnrollmentView:
                         if req_codigo not in materias_aprobadas_codigos:
                             req_ids.append(req_codigo)
                 # Si todos los requisitos normales están aprobados y los corequisitos están ok
-                if (
-                    not req_ids
-                    and corequisito_ok
-                ):
+                if not req_ids and corequisito_ok:
                     if int(materia.creditos) > uc_disponibles:
                         estado = "⚠️"
                     else:
@@ -697,7 +696,9 @@ class EnrollmentView:
                     dialog = tk.Toplevel(self.parent)
                     dialog.title("Confirmar inscripción")
                     dialog.resizable(False, False)
-                    dialog.transient(self.parent)
+                    dialog.transient(
+                        self.parent
+                    )  # Hace que el diálogo sea hijo de la ventana principal
 
                     # Centrar el diálogo
                     parent_x = self.parent.winfo_rootx()
@@ -764,16 +765,18 @@ class EnrollmentView:
 
                     if secciones_a_mostrar:
                         section_combobox["values"] = secciones_a_mostrar
-                        section_var.set(secciones_a_mostrar[0])
+                        section_var.set(
+                            secciones_a_mostrar[0]
+                        )  # Seleccionar la primera sección disponible por defecto
                     else:
                         section_combobox["values"] = []
                         section_var.set("No hay secciones")
                         messagebox.showwarning(
                             "Sin secciones",
-                            f"No hay secciones 1, 2 o 3 disponibles para {info['nombre']} en el período {periodo_activo}.",
+                            f"No hay secciones D1, D2 o D3 disponibles para {info['nombre']} en el período {periodo_activo}.",
                         )
-                        dialog.destroy()
-                        return
+                        dialog.destroy()  # Cerrar el diálogo si no hay secciones
+                        return  # Salir de la función si no hay secciones
 
                     # Frame para los botones
                     button_frame = tk.Frame(main_frame)
@@ -781,12 +784,15 @@ class EnrollmentView:
 
                     def confirm():
                         section_num = section_var.get().strip()
-                        if section_num == "No hay secciones":
+                        if (
+                            section_num == "No hay secciones"
+                        ):  # No permitir inscribir si no hay secciones
                             messagebox.showerror(
                                 "Error", "No se puede inscribir sin una sección válida."
                             )
                             return
 
+                        # Obtener el id_seccion real de la sección seleccionada
                         seccion_id = self.secciones_map.get(section_num)
                         if seccion_id is None:
                             messagebox.showerror(
@@ -796,16 +802,7 @@ class EnrollmentView:
 
                         dialog.destroy()
                         if info["codigo"] not in self.materias_a_inscribir:
-                            try:
-                                self.controller.create(
-                                    self.estudiante.id, int(seccion_id)
-                                )
-                            except Exception as e:
-                                messagebox.showerror(
-                                    "Error al inscribir materias", str(e)
-                                )
-                                return
-
+                            # Calcula el nuevo ID incremental
                             idx = len(self.inscribir_tree.get_children()) + 1
                             self.inscribir_tree.insert(
                                 "",
@@ -816,29 +813,32 @@ class EnrollmentView:
                                     info["nombre"],
                                     info["uc"],
                                     info["requisito"],
-                                    f"D{section_num}",
+                                    f"D{section_num}",  # Concatenar 'D' con el número de sección
                                     seccion_id,
                                 ),
                             )
                             self.materias_a_inscribir.add(info["codigo"])
                             self.secciones_seleccionadas[info["codigo"]] = section_num
                             self.uc_inscritas += nueva_uc
+                            # Cambia el estado a inscrita
                             self.materia_info[row_id]["estado"] = "📋"
                             self.actualizar_tabla_materias()
                             self.uc_label.config(
                                 text=f"UC disponibles: {33 - self.uc_inscritas}"
                             )
 
+                    # Frame para contener los botones y centrarlos
                     inner_button_frame = tk.Frame(button_frame)
                     inner_button_frame.pack(expand=True)
 
+                    # Botón Sí con estilo
                     yes_btn = tk.Button(
                         inner_button_frame,
                         text="Sí",
                         command=confirm,
                         width=8,
                         font=("Arial", 10),
-                        bg="#4CAF50",
+                        bg="#4CAF50",  # Verde
                         fg="white",
                         activebackground="#45a049",
                         relief="raised",
@@ -846,13 +846,14 @@ class EnrollmentView:
                     )
                     yes_btn.pack(side="left", padx=10)
 
+                    # Botón No con estilo
                     no_btn = tk.Button(
                         inner_button_frame,
                         text="No",
                         command=dialog.destroy,
                         width=8,
                         font=("Arial", 10),
-                        bg="#f44336",
+                        bg="#f44336",  # Rojo
                         fg="white",
                         activebackground="#d32f2f",
                         relief="raised",
@@ -860,8 +861,10 @@ class EnrollmentView:
                     )
                     no_btn.pack(side="left", padx=10)
 
+                    # Hacer que el diálogo sea modal
                     dialog.grab_set()
                     dialog.wait_window()
+
                 else:
                     messagebox.showinfo(
                         "Información",
@@ -879,7 +882,35 @@ class EnrollmentView:
             values = self.inscribir_tree.item(item, "values")
             codigo = values[1]
             uc = int(values[3])
-            # Elimina de la tabla visual
+            # Elimina de la base de datos la inscripción si ya existe
+            try:
+                from config.database import get_db_connection
+
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        """
+                        SELECT i.id_inscripcion
+                        FROM inscripciones i
+                        JOIN secciones s ON i.id_seccion = s.id_seccion
+                        JOIN materias m ON s.id_materia = m.id_materia
+                        WHERE i.id_estudiante = ? AND m.codigo = ? AND i.estado = 'activo'
+                    """,
+                        (self.estudiante.id, codigo),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        id_inscripcion = row[0]
+                        cursor.execute(
+                            "DELETE FROM inscripciones WHERE id_inscripcion = ?",
+                            (id_inscripcion,),
+                        )
+                        conn.commit()
+            except Exception as e:
+                messagebox.showerror(
+                    "Error", f"Error al eliminar inscripción: {str(e)}"
+                )
+            # Elimina de la tabla visual inmediatamente
             self.inscribir_tree.delete(item)
             # Elimina del set de materias a inscribir
             if codigo in self.materias_a_inscribir:
@@ -894,9 +925,9 @@ class EnrollmentView:
                 vals = list(self.inscribir_tree.item(iid, "values"))
                 vals[0] = idx
                 self.inscribir_tree.item(iid, values=vals)
-            # Actualiza el contador y la tabla principal
-            self.uc_label.config(text=f"UC disponibles: {33 - self.uc_inscritas}")
-            self.actualizar_tabla_materias()
+        # Actualiza el contador y la tabla principal
+        self.uc_label.config(text=f"UC disponibles: {33 - self.uc_inscritas}")
+        self.actualizar_tabla_materias()
 
     def cargar_materias_inscritas(self):
         """Carga las materias inscritas del estudiante"""
